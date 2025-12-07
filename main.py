@@ -1,69 +1,76 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import json, time, os
-from datetime import datetime
+from datetime import datetime, timedelta
+import json
+import os
 
 app = FastAPI()
-BUFFER_SECONDS = 10
-DB_FILE = "violations.json"
 
+# Allow CORS for local testing
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
-if not os.path.exists(DB_FILE):
-    with open(DB_FILE, "w") as f:
-        json.dump({}, f)
+DATA_FILE = "data.json"
+FINE_AMOUNT = 100
+BUFFER_SECONDS = 20  # 20-second buffer
 
+# Pydantic model
 class Violation(BaseModel):
     number: str
 
-def load_db():
-    with open(DB_FILE, "r") as f:
+# Load or initialize JSON file
+if not os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "w") as f:
+        json.dump({}, f)
+
+def read_data():
+    with open(DATA_FILE, "r") as f:
         return json.load(f)
 
-def save_db(data):
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+def write_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
 @app.post("/api/new_violation")
-def new_violation(v: Violation):
-    db = load_db()
+def add_violation(v: Violation):
+    data = read_data()
     plate = v.number.upper()
-    current_time = time.time()
+    now = datetime.now()
     
-    if plate in db:
-        last_entry = db[plate][-1]["timestamp"]
-        diff = current_time - last_entry
-        if diff < BUFFER_SECONDS:
-            return {"message": f"Already added recently. Wait {int(BUFFER_SECONDS - diff)} secs."}
-        # Add 100 Rs to the last entry
-        db[plate][-1]["fine"] += 100
-        db[plate][-1]["timestamp"] = current_time
-    else:
-        db[plate] = [{"timestamp": current_time, "fine": 100}]
+    if plate not in data:
+        # First violation
+        data[plate] = [{"timestamp": now.isoformat(), "fine": FINE_AMOUNT}]
+        write_data(data)
+        return {"message": f"Violation recorded for {plate}", "fine": FINE_AMOUNT}
     
-    save_db(db)
-    return {"message": "Violation recorded", "plate": plate}
+    # Existing plate
+    last_entry = datetime.fromisoformat(data[plate][-1]["timestamp"])
+    diff = (now - last_entry).total_seconds()
+    
+    if diff < BUFFER_SECONDS:
+        return {"message": f"Already added recently. Wait {BUFFER_SECONDS} seconds."}
+    
+    # Add fine (same entry updated if within 24h)
+    last_24h = datetime.fromisoformat(data[plate][-1]["timestamp"])
+    if (now - last_24h) >= timedelta(seconds=BUFFER_SECONDS):
+        data[plate].append({"timestamp": now.isoformat(), "fine": FINE_AMOUNT})
+    
+    write_data(data)
+    return {"message": f"Violation updated for {plate}", "fine": FINE_AMOUNT}
 
 @app.get("/api/get_vehicle/{plate}")
-def get_vehicle(plate: str):
-    db = load_db()
+def get_vehicle_violations(plate: str):
+    data = read_data()
     plate = plate.upper()
-    if plate not in db:
-        return {"message": "No record found"}
-    result = []
-    total_fine = 0
-    for entry in db[plate]:
-        ts = datetime.fromtimestamp(entry["timestamp"])
-        result.append({
-            "date": ts.strftime("%d %B, %Y"),
-            "time": ts.strftime("%H:%M:%S"),
-            "fine": entry["fine"]
-        })
-        total_fine += entry["fine"]
-    return {"plate": plate, "entries": result, "total_fine": total_fine}
+    if plate not in data:
+        return []
+    return data[plate]
+
+@app.get("/api/get_all")
+def get_all_violations():
+    return read_data()
