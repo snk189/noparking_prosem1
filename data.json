@@ -1,16 +1,2 @@
 {
-    "records": [
-        {
-            "plate": "hello",
-            "timestamp": "2025-12-07 20:24:18",
-            "violation": "Speeding",
-            "fine": 100
-        },
-        {
-            "plate": "hello",
-            "timestamp": "2025-12-07 20:24:22",
-            "violation": "Speeding",
-            "fine": 100
-        }
-    ]
-}
+    "records": []}
