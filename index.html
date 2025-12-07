@@ -2,44 +2,90 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Parking Violations Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parking Violation Dashboard</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f2f6fc; margin: 0; padding: 20px; }
+h1 { text-align: center; color: #333; }
+.container { max-width: 800px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+.section { margin-bottom: 30px; }
+label { display: block; margin-bottom: 5px; font-weight: bold; }
+input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; }
+button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+button:hover { background: #0056b3; }
+#messages { margin-top: 10px; color: green; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+table, th, td { border: 1px solid #ddd; }
+th, td { padding: 8px; text-align: center; }
+th { background: #007bff; color: white; }
+</style>
 </head>
 <body>
-<h2>Record a New Violation</h2>
-<input type="text" id="plate" placeholder="Enter vehicle number">
-<button onclick="recordViolation()">Submit</button>
+<div class="container">
+    <h1>Parking Violation Dashboard</h1>
 
-<h2>Records</h2>
-<ul id="records"></ul>
+    <div class="section">
+        <h2>Record New Violation</h2>
+        <label for="newPlate">Number Plate:</label>
+        <input type="text" id="newPlate" placeholder="Enter vehicle plate">
+        <button onclick="addViolation()">Submit</button>
+        <div id="messages"></div>
+    </div>
+
+    <div class="section">
+        <h2>Search Vehicle</h2>
+        <label for="searchPlate">Number Plate:</label>
+        <input type="text" id="searchPlate" placeholder="Enter vehicle plate to search">
+        <button onclick="searchVehicle()">Search</button>
+        <div id="searchResults"></div>
+    </div>
+</div>
 
 <script>
-async function recordViolation() {
-    const plate = document.getElementById("plate").value;
-    const response = await fetch("http://127.0.0.1:8000/api/new_violation", {
+async function addViolation() {
+    const plate = document.getElementById("newPlate").value.trim();
+    if(!plate) return alert("Enter a plate number!");
+    const res = await fetch("http://127.0.0.1:8000/api/new_violation", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({number: plate})
     });
-    const data = await response.json();
-    alert(`${data.message}. Fine: Rs ${data.fine}`);
-    getRecords();
+    const data = await res.json();
+    document.getElementById("messages").innerText = data.message;
+    document.getElementById("newPlate").value = "";
 }
 
-async function getRecords() {
-    const resp = await fetch("http://127.0.0.1:8000/api/get_records");
-    const records = await resp.json();
-    const ul = document.getElementById("records");
-    ul.innerHTML = "";
-    records.forEach(r => {
-        const li = document.createElement("li");
-        li.textContent = `${r.timestamp} - ${r.plate} - ${r.violation} - Fine: Rs ${r.fine}`;
-        ul.appendChild(li);
+async function searchVehicle() {
+    const plate = document.getElementById("searchPlate").value.trim();
+    if(!plate) return alert("Enter a plate number!");
+    const res = await fetch(`http://127.0.0.1:8000/api/get_vehicle/${plate}`);
+    const data = await res.json();
+    const container = document.getElementById("searchResults");
+    container.innerHTML = "";
+
+    if(data.message) {
+        container.innerHTML = `<p>${data.message}</p>`;
+        return;
+    }
+
+    let html = `<h3>Plate: ${data.plate}</h3>`;
+    html += `<p>Total Fine: ₹${data.total_fine}</p>`;
+    html += `<table>
+        <tr><th>Date</th><th>Time</th><th>Fine (₹)</th></tr>`;
+    data.entries.forEach(entry => {
+        html += `<tr><td>${entry.date}</td><td>${entry.time}</td><td>${entry.fine}</td></tr>`;
     });
+    html += `</table>`;
+    container.innerHTML = html;
 }
 
-// Auto-refresh every 5 seconds
-setInterval(getRecords, 5000);
-getRecords();
+// Add Enter key functionality
+document.getElementById("newPlate").addEventListener("keypress", function(e) {
+    if(e.key === "Enter") addViolation();
+});
+document.getElementById("searchPlate").addEventListener("keypress", function(e) {
+    if(e.key === "Enter") searchVehicle();
+});
 </script>
 </body>
 </html>
