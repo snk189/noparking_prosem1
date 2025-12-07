@@ -7,7 +7,6 @@ import os
 
 app = FastAPI()
 
-# Allow CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,9 +16,8 @@ app.add_middleware(
 
 DATA_FILE = "data.json"
 FINE_AMOUNT = 100
-BUFFER_SECONDS = 5  # 5-second buffer
+BUFFER_SECONDS = 5  # 5 seconds wait
 
-# Pydantic models
 class Violation(BaseModel):
     number: str
 
@@ -27,10 +25,9 @@ class Payment(BaseModel):
     number: str
     amount: int
 
-# Load or initialize JSON
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f:
-        json.dump({"records": []}, f, indent=4)
+        json.dump({}, f)
 
 def read_data():
     with open(DATA_FILE, "r") as f:
@@ -40,70 +37,70 @@ def write_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-def find_record(data, plate):
-    for rec in data["records"]:
-        if rec["plate"] == plate:
-            return rec
-    return None
+def formatted_time():
+    return datetime.now().strftime("%d %B %Y - %I:%M:%S %p")
 
 @app.post("/api/new_violation")
 def add_violation(v: Violation):
     data = read_data()
     plate = v.number.upper()
     now = datetime.now()
-    
-    rec = find_record(data, plate)
-    
-    if not rec:
-        # New vehicle
-        data["records"].append({
-            "plate": plate,
+
+    if plate not in data:
+        data[plate] = {
             "fine": FINE_AMOUNT,
-            "breakdown": [{"type": "violation", "timestamp": now.strftime("%d-%B-%Y %H:%M:%S"), "amount": FINE_AMOUNT}]
-        })
+            "breakdown": [{"type": "FINE", "amount": FINE_AMOUNT, "timestamp": formatted_time()}],
+            "last_update": now.isoformat()
+        }
         write_data(data)
         return {"message": f"Violation recorded for {plate}", "fine": FINE_AMOUNT}
-    
-    # Existing plate, check buffer
-    last_ts = datetime.strptime(rec["breakdown"][-1]["timestamp"], "%d-%B-%Y %H:%M:%S")
-    diff = (now - last_ts).total_seconds()
-    
-    if diff < BUFFER_SECONDS:
-        return {"message": f"Already added recently. Wait {BUFFER_SECONDS} seconds.", "wait_time": int(BUFFER_SECONDS - diff)}
-    
-    # Add violation
-    rec["fine"] += FINE_AMOUNT
-    rec["breakdown"].append({"type": "violation", "timestamp": now.strftime("%d-%B-%Y %H:%M:%S"), "amount": FINE_AMOUNT})
-    write_data(data)
-    return {"message": f"Violation updated for {plate}", "fine": rec["fine"]}
 
-@app.post("/api/pay_fine")
-def pay_fine(p: Payment):
-    data = read_data()
-    plate = p.number.upper()
-    rec = find_record(data, plate)
-    
-    if not rec:
-        raise HTTPException(status_code=404, detail="Vehicle not found.")
-    
-    if p.amount > rec["fine"]:
-        return {"message": f"Payment unsuccessful. Tried to pay {p.amount} Rs but only {rec['fine']} Rs is due.", "remaining_fine": rec["fine"]}
-    
-    rec["fine"] -= p.amount
-    now = datetime.now()
-    rec["breakdown"].append({"type": "payment", "timestamp": now.strftime("%d-%B-%Y %H:%M:%S"), "amount": p.amount})
+    last_time = datetime.fromisoformat(data[plate]["last_update"])
+    diff = (now - last_time).total_seconds()
+
+    if diff < BUFFER_SECONDS:
+        wait = BUFFER_SECONDS - int(diff)
+        return {"message": f"Please wait {wait} seconds before updating again."}
+
+    data[plate]["fine"] += FINE_AMOUNT
+    data[plate]["breakdown"].append({"type": "FINE", "amount": FINE_AMOUNT, "timestamp": formatted_time()})
+    data[plate]["last_update"] = now.isoformat()
     write_data(data)
-    return {"message": f"Payment of {p.amount} Rs successful.", "remaining_fine": rec["fine"]}
+
+    return {"message": f"Violation updated for {plate}", "fine": data[plate]["fine"]}
+
 
 @app.get("/api/get_vehicle/{plate}")
 def get_vehicle_violations(plate: str):
     data = read_data()
     plate = plate.upper()
-    rec = find_record(data, plate)
-    if not rec:
-        return []
-    return [rec]
 
-@app.get("/api/get_all")
-def get_all_violations():
-    return read_data()
+    if plate not in data:
+        return {"status": "no_record"}
+
+    if data[plate]["fine"] == 0:
+        return {"status": "no_dues"}
+
+    return {"status": "found", "record": data[plate]}
+
+
+@app.post("/api/pay_fine")
+def pay_fine(p: Payment):
+    data = read_data()
+    plate = p.number.upper()
+    amt = p.amount
+
+    if plate not in data:
+        return {"status": "no_record", "message": "No violation exists for this vehicle."}
+
+    if data[plate]["fine"] == 0:
+        return {"status": "no_dues", "message": "No dues to pay."}
+
+    if amt > data[plate]["fine"]:
+        return {"status": "excess", "message": "Excess amount tried to pay. Payment unsuccessful."}
+
+    data[plate]["fine"] -= amt
+    data[plate]["breakdown"].append({"type": "PAYMENT", "amount": -amt, "timestamp": formatted_time()})
+    write_data(data)
+
+    return {"status": "paid", "message": f"Payment successful. Remaining fine: {data[plate]['fine']}", "remaining": data[plate]["fine"]}
