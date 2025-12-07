@@ -17,7 +17,7 @@ app.add_middleware(
 
 DATA_FILE = "data.json"
 FINE_AMOUNT = 100
-BUFFER_SECONDS = 20  # 20-second buffer
+BUFFER_SECONDS = 10  # 10-second buffer
 
 # Pydantic model
 class Violation(BaseModel):
@@ -74,3 +74,4 @@ def get_vehicle_violations(plate: str):
 @app.get("/api/get_all")
 def get_all_violations():
     return read_data()
+
