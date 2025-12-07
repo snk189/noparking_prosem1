@@ -7,7 +7,6 @@ import os
 
 app = FastAPI()
 
-# Allow CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,7 +21,6 @@ BUFFER_SECONDS = 5  # 5-second buffer
 class Violation(BaseModel):
     number: str
 
-# Initialize JSON if not exists
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f:
         json.dump({"records": []}, f)
@@ -41,17 +39,17 @@ def add_violation(v: Violation):
     plate = v.number.upper()
     now = datetime.now()
 
-    # Check last entry for buffer
-    last_entry = None
+    last_entry_time = None
     for record in reversed(data["records"]):
         if record["number"] == plate:
-            last_entry = datetime.fromisoformat(record["timestamp"])
+            last_entry_time = datetime.fromisoformat(record["timestamp"])
             break
 
-    if last_entry and (now - last_entry).total_seconds() < BUFFER_SECONDS:
-        return {"message": f"Already added recently. Wait {BUFFER_SECONDS} seconds."}
+    if last_entry_time:
+        wait_time = BUFFER_SECONDS - (now - last_entry_time).total_seconds()
+        if wait_time > 0:
+            return {"message": f"Already added recently. Wait {int(wait_time)} seconds."}
 
-    # Add new record always
     new_record = {
         "number": plate,
         "timestamp": now.isoformat(),
@@ -59,7 +57,6 @@ def add_violation(v: Violation):
     }
     data["records"].append(new_record)
     write_data(data)
-
     return {"message": f"Violation recorded for {plate}", "fine": FINE_AMOUNT}
 
 @app.get("/api/get_vehicle/{plate}")
