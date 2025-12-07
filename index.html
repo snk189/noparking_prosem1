@@ -1,188 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Parking Violations Dashboard</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f0f2f5;
-            margin: 0;
-            padding: 0;
-        }
-        header {
-            background-color: #1E90FF;
-            color: white;
-            text-align: center;
-            padding: 20px;
-            font-size: 26px;
-            font-weight: bold;
-        }
-        .container {
-            max-width: 800px;
-            margin: 30px auto;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
-        }
-        h2 {
-            color: #1E90FF;
-            text-align: center;
-        }
-        .form-group {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-        input[type="text"], input[type="number"] {
-            padding: 10px;
-            font-size: 16px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            width: 250px;
-        }
-        button {
-            padding: 10px 15px;
-            margin-left: 10px;
-            background-color: #1E90FF;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover {
-            background-color: #005bb5;
-        }
-        .message {
-            text-align: center;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #ff4500;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        th, td {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-            text-align: center;
-        }
-        th {
-            background-color: #1E90FF;
-            color: white;
-        }
-        #results {
-            margin-top: 20px;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>Parking Violations Dashboard</title>
+<style>
+    body {
+        font-family: 'Segoe UI', sans-serif;
+        background: #eef2f3;
+        margin: 0; padding: 0;
+    }
+    header {
+        background: #0077ff;
+        color: white;
+        text-align: center;
+        padding: 20px;
+        font-size: 28px;
+        font-weight: bold;
+    }
+    .container {
+        width: 850px; margin: 25px auto;
+        background: white; padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
+    }
+    .message {
+        text-align: center;
+        font-weight: bold;
+        margin: 10px 0;
+        color: #d62b00;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+    }
+    th, td {
+        padding: 10px; text-align: center;
+        border-bottom: 1px solid #bbb;
+    }
+    th {
+        background: #0077ff;
+        color: white;
+    }
+</style>
 </head>
+
 <body>
-    <header>Parking Violations Dashboard</header>
-    <div class="container">
-        <h2>Add a New Violation</h2>
-        <div class="message" id="addMsg"></div>
-        <div class="form-group">
-            <input type="text" id="addPlate" placeholder="Enter vehicle number">
-            <button onclick="addViolation()">Submit</button>
-        </div>
+<header>Parking Violations Dashboard</header>
 
-        <h2>Search Vehicle Violations</h2>
-        <div class="message" id="searchMsg"></div>
-        <div class="form-group">
-            <input type="text" id="searchPlate" placeholder="Enter vehicle number">
-            <button onclick="searchViolations()">Search</button>
-        </div>
+<div class="container">
 
-        <h2>Make a Payment</h2>
-        <div class="message" id="payMsg"></div>
-        <div class="form-group">
-            <input type="text" id="payPlate" placeholder="Enter vehicle number">
-            <input type="number" id="payAmount" placeholder="Amount to pay">
-            <button onclick="makePayment()">Pay</button>
-        </div>
+<h2>Add New Violation</h2>
+<div class="message" id="addMsg"></div>
+<input type="text" id="addPlate" placeholder="Vehicle number">
+<button onclick="addViolation()">Submit</button>
 
-        <div id="results"></div>
-    </div>
+<h2>Search Violations</h2>
+<div class="message" id="searchMsg"></div>
+<input type="text" id="searchPlate" placeholder="Vehicle number">
+<button onclick="searchViolations()">Search</button>
 
-    <script>
-        async function addViolation() {
-            const plate = document.getElementById('addPlate').value.trim();
-            const msgDiv = document.getElementById('addMsg');
-            if (!plate) return;
-            try {
-                const res = await fetch('http://127.0.0.1:8000/api/new_violation', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ number: plate })
-                });
-                const data = await res.json();
-                msgDiv.textContent = data.message + (data.fine ? ` | Fine: ${data.fine} Rs` : '');
-                document.getElementById('addPlate').value = '';
-            } catch (err) {
-                console.error(err);
-                msgDiv.textContent = 'Error adding violation.';
-            }
-        }
+<h2>Make Payment</h2>
+<div class="message" id="payMsg"></div>
+<input type="text" id="payPlate" placeholder="Vehicle number">
+<input type="number" id="payAmount" placeholder="Amount">
+<button onclick="makePayment()">Pay</button>
 
-        async function searchViolations() {
-            const plate = document.getElementById('searchPlate').value.trim();
-            const msgDiv = document.getElementById('searchMsg');
-            const resultsDiv = document.getElementById('results');
-            if (!plate) return;
-            try {
-                const res = await fetch(`http://127.0.0.1:8000/api/get_vehicle/${plate}`);
-                const data = await res.json();
-                if (!data || data.length === 0) {
-                    resultsDiv.innerHTML = '';
-                    msgDiv.textContent = 'No violations found.';
-                    return;
-                }
-                msgDiv.textContent = '';
-                let rec = data[0];
-                let total = rec.fine;
-                let tableHTML = `<table>
-                    <tr><th>Type</th><th>Timestamp</th><th>Amount (Rs)</th></tr>`;
-                rec.breakdown.forEach(entry => {
-                    tableHTML += `<tr><td>${entry.type}</td><td>${entry.timestamp}</td><td>${entry.amount}</td></tr>`;
-                });
-                tableHTML += `<tr><th colspan="2">Total Due</th><th>${total}</th></tr></table>`;
-                resultsDiv.innerHTML = tableHTML;
-            } catch (err) {
-                console.error(err);
-                msgDiv.textContent = 'Error fetching violations.';
-            }
-        }
+<div id="results"></div>
 
-        async function makePayment() {
-            const plate = document.getElementById('payPlate').value.trim();
-            const amount = parseInt(document.getElementById('payAmount').value);
-            const msgDiv = document.getElementById('payMsg');
-            const resultsDiv = document.getElementById('results');
-            if (!plate || !amount) return;
+</div>
 
-            try {
-                const res = await fetch('http://127.0.0.1:8000/api/pay_fine', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ number: plate, amount: amount })
-                });
-                const data = await res.json();
-                msgDiv.textContent = data.message;
-                document.getElementById('payPlate').value = '';
-                document.getElementById('payAmount').value = '';
-                if (data.remaining_fine !== undefined) {
-                    // Refresh the search results if any
-                    searchViolations();
-                }
-            } catch (err) {
-                console.error(err);
-                msgDiv.textContent = 'Error processing payment.';
-            }
-        }
-    </script>
+<script>
+async function addViolation() {
+    let plate = document.getElementById("addPlate").value.trim();
+    let msg = document.getElementById("addMsg");
+    if (!plate) return;
+    let res = await fetch("http://127.0.0.1:8000/api/new_violation", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({number: plate})
+    });
+    let data = await res.json();
+    msg.textContent = data.message;
+}
+
+async function searchViolations() {
+    const plate = document.getElementById("searchPlate").value.trim();
+    const msg = document.getElementById("searchMsg");
+    const results = document.getElementById("results");
+    if (!plate) return;
+
+    const res = await fetch(`http://127.0.0.1:8000/api/get_vehicle/${plate}`);
+    const data = await res.json();
+
+    if (data.status === "no_record") {
+        msg.textContent = "No violation exists. Clean record 🎉";
+        results.innerHTML = "";
+        return;
+    }
+
+    if (data.status === "no_dues") {
+        msg.textContent = "No dues. All clear ✔️";
+        results.innerHTML = "";
+        return;
+    }
+
+    msg.textContent = "";
+    let rec = data.record;
+
+    let html = `<table><tr><th>Type</th><th>Timestamp</th><th>Amount</th></tr>`;
+    let total = rec.fine;
+
+    rec.breakdown.forEach(x=>{
+        html += `<tr><td>${x.type}</td><td>${x.timestamp}</td><td>${x.amount}</td></tr>`;
+    });
+
+    html += `<tr><th>Total Due</th><th></th><th>${total}</th></tr>`;
+    html += `</table>`;
+    results.innerHTML = html;
+}
+
+async function makePayment() {
+    const plate = document.getElementById("payPlate").value.trim();
+    const amt = document.getElementById("payAmount").value;
+    const msg = document.getElementById("payMsg");
+
+    if (!plate || !amt) return;
+
+    const res = await fetch("http://127.0.0.1:8000/api/pay_fine", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({number: plate, amount: parseInt(amt)})
+    });
+
+    const data = await res.json();
+    msg.textContent = data.message;
+    searchViolations();
+}
+</script>
+
 </body>
 </html>
