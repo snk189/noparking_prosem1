@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime, timedelta
-import json
-from pathlib import Path
+import json, time, os
+from datetime import datetime
 
 app = FastAPI()
+BUFFER_SECONDS = 10
+DB_FILE = "violations.json"
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,56 +15,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_FILE = Path("data.json")
-
-# Initialize JSON if not exists
-if not DB_FILE.exists():
+if not os.path.exists(DB_FILE):
     with open(DB_FILE, "w") as f:
-        json.dump({"records": []}, f, indent=4)
+        json.dump({}, f)
 
-def read_db():
+class Violation(BaseModel):
+    number: str
+
+def load_db():
     with open(DB_FILE, "r") as f:
         return json.load(f)
 
-def write_db(data):
+def save_db(data):
     with open(DB_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-class ViolationIn(BaseModel):
-    number: str
+        json.dump(data, f, indent=2)
 
 @app.post("/api/new_violation")
-def new_violation(data: ViolationIn):
-    db = read_db()
-    now = datetime.now()
-    timestamp_str = now.strftime("%Y-%m-%d %H:%M:%S")
-    fine = 100
+def new_violation(v: Violation):
+    db = load_db()
+    plate = v.number.upper()
+    current_time = time.time()
+    
+    if plate in db:
+        last_entry = db[plate][-1]["timestamp"]
+        diff = current_time - last_entry
+        if diff < BUFFER_SECONDS:
+            return {"message": f"Already added recently. Wait {int(BUFFER_SECONDS - diff)} secs."}
+        # Add 100 Rs to the last entry
+        db[plate][-1]["fine"] += 100
+        db[plate][-1]["timestamp"] = current_time
+    else:
+        db[plate] = [{"timestamp": current_time, "fine": 100}]
+    
+    save_db(db)
+    return {"message": "Violation recorded", "plate": plate}
 
-    # Check last record of this vehicle
-    last_record = None
-    for record in reversed(db["records"]):
-        if record["plate"] == data.number:
-            last_record = record
-            break
-
-    if last_record:
-        last_time = datetime.strptime(last_record["timestamp"], "%Y-%m-%d %H:%M:%S")
-        if now - last_time < timedelta(hours=24):
-            fine = last_record["fine"]  # No new fine within 24 hours
-        else:
-            fine = last_record["fine"] + 100  # Add 100 Rs
-
-    entry = {
-        "plate": data.number,
-        "timestamp": timestamp_str,
-        "violation": "Speeding",
-        "fine": fine
-    }
-    db["records"].append(entry)
-    write_db(db)
-    return {"message": "Violation recorded", "plate": data.number, "fine": fine}
-
-@app.get("/api/get_records")
-def get_records():
-    db = read_db()
-    return db["records"][::-1]  # latest first
+@app.get("/api/get_vehicle/{plate}")
+def get_vehicle(plate: str):
+    db = load_db()
+    plate = plate.upper()
+    if plate not in db:
+        return {"message": "No record found"}
+    result = []
+    total_fine = 0
+    for entry in db[plate]:
+        ts = datetime.fromtimestamp(entry["timestamp"])
+        result.append({
+            "date": ts.strftime("%d %B, %Y"),
+            "time": ts.strftime("%H:%M:%S"),
+            "fine": entry["fine"]
+        })
+        total_fine += entry["fine"]
+    return {"plate": plate, "entries": result, "total_fine": total_fine}
