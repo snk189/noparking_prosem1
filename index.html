@@ -4,80 +4,19 @@
     <meta charset="UTF-8">
     <title>Parking Violations Dashboard</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f0f2f5;
-            margin: 0;
-            padding: 0;
-        }
-        header {
-            background-color: #1E90FF;
-            color: white;
-            text-align: center;
-            padding: 20px;
-            font-size: 26px;
-            font-weight: bold;
-        }
-        .container {
-            max-width: 800px;
-            margin: 30px auto;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
-        }
-        h2 {
-            color: #1E90FF;
-            text-align: center;
-        }
-        .form-group {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-        input[type="text"] {
-            padding: 10px;
-            font-size: 16px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            width: 250px;
-        }
-        button {
-            padding: 10px 15px;
-            margin-left: 10px;
-            background-color: #1E90FF;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover {
-            background-color: #005bb5;
-        }
-        .message {
-            text-align: center;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #ff4500;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        th, td {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-            text-align: center;
-        }
-        th {
-            background-color: #1E90FF;
-            color: white;
-        }
-        #searchResults {
-            margin-top: 20px;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin:0; padding:0; }
+        header { background-color: #1E90FF; color: white; text-align: center; padding: 20px; font-size: 26px; font-weight: bold; }
+        .container { max-width: 900px; margin: 30px auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0px 4px 12px rgba(0,0,0,0.1); }
+        h2 { color: #1E90FF; text-align: center; }
+        .form-group { display: flex; justify-content: center; margin-bottom: 20px; }
+        input[type="text"] { padding: 10px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; width: 250px; }
+        button { padding: 10px 15px; margin-left: 10px; background-color: #1E90FF; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #005bb5; }
+        .message { text-align: center; font-weight: bold; margin-bottom: 15px; color: #ff4500; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: center; }
+        th { background-color: #1E90FF; color: white; }
+        #searchResults { margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -101,6 +40,11 @@
     </div>
 
     <script>
+        function addOrdinal(n) {
+            if (n > 3 && n < 21) return n + 'th';
+            switch (n % 10) { case 1: return n + "st"; case 2: return n + "nd"; case 3: return n + "rd"; default: return n + "th"; }
+        }
+
         async function addViolation() {
             const plate = document.getElementById('addPlate').value.trim();
             const msgDiv = document.getElementById('addMsg');
@@ -136,12 +80,15 @@
                 msgDiv.textContent = '';
                 let total = 0;
                 let tableHTML = `<table>
-                    <tr><th>Timestamp</th><th>Fine (Rs)</th></tr>`;
+                    <tr><th>Date</th><th>Time</th><th>Fine (Rs)</th></tr>`;
                 data.forEach(v => {
-                    tableHTML += `<tr><td>${v.timestamp}</td><td>${v.fine}</td></tr>`;
+                    const dt = new Date(v.timestamp);
+                    const dateStr = addOrdinal(dt.getDate()) + ' ' + dt.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+                    const timeStr = dt.toLocaleTimeString('en-US');
+                    tableHTML += `<tr><td>${dateStr}</td><td>${timeStr}</td><td>${v.fine}</td></tr>`;
                     total += v.fine;
                 });
-                tableHTML += `<tr><th>Total</th><th>${total}</th></tr></table>`;
+                tableHTML += `<tr><th colspan="2">Total</th><th>${total}</th></tr></table>`;
                 resultsDiv.innerHTML = tableHTML;
             } catch (err) {
                 console.error(err);
