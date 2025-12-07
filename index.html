@@ -4,119 +4,100 @@
 <meta charset="UTF-8">
 <title>Parking Violations Dashboard</title>
 <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin:0; padding:0; }
-    header { background-color: #1E90FF; color:white; text-align:center; padding:20px; font-size:26px; font-weight:bold; }
-    .container { max-width:900px; margin:30px auto; background:white; padding:20px; border-radius:10px; box-shadow:0px 4px 12px rgba(0,0,0,0.1); }
-    h2 { color:#1E90FF; text-align:center; }
-    .form-group { display:flex; justify-content:center; margin-bottom:20px; }
-    input[type="text"], input[type="number"], input[type="file"] { padding:10px; font-size:16px; border-radius:6px; border:1px solid #ccc; width:250px; }
-    button { padding:10px 15px; margin-left:10px; background-color:#1E90FF; color:white; border:none; border-radius:6px; cursor:pointer; font-size:16px; }
-    button:hover { background-color:#005bb5; }
-    .message { text-align:center; font-weight:bold; margin-bottom:15px; color:#ff4500; }
-    table { width:100%; border-collapse:collapse; margin-top:15px; }
-    th, td { padding:10px; border-bottom:1px solid #ddd; text-align:center; }
-    th { background-color:#1E90FF; color:white; }
-    img { max-width:200px; margin:5px; border:1px solid #ccc; border-radius:6px; }
+body { font-family: 'Segoe UI', sans-serif; background:#f0f2f5; margin:0; padding:0; }
+header { background:#1E90FF; color:white; text-align:center; padding:20px; font-size:26px; font-weight:bold; }
+.container { max-width:800px; margin:30px auto; background:white; padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+h2 { color:#1E90FF; text-align:center; }
+.form-group { display:flex; justify-content:center; margin-bottom:20px; }
+input[type="text"], input[type="number"] { padding:10px; font-size:16px; border-radius:6px; border:1px solid #ccc; width:250px; }
+button { padding:10px 15px; margin-left:10px; background:#1E90FF; color:white; border:none; border-radius:6px; cursor:pointer; font-size:16px; }
+button:hover { background:#005bb5; }
+.message { text-align:center; font-weight:bold; margin-bottom:15px; color:#ff4500; }
+table { width:100%; border-collapse:collapse; margin-top:15px; }
+th, td { padding:10px; border-bottom:1px solid #ddd; text-align:center; }
+th { background:#1E90FF; color:white; }
+img { max-width:200px; }
 </style>
 </head>
 <body>
 <header>Parking Violations Dashboard</header>
 <div class="container">
 
-<h2>Upload Car Image → Automatic Fine</h2>
-<div class="message" id="uploadMsg"></div>
+<h2>Upload Car Image</h2>
+<div class="message" id="imgMsg"></div>
 <div class="form-group">
-    <input type="file" id="carImage">
-    <button onclick="uploadImage()">Upload</button>
+<input type="file" id="carImage">
+<button onclick="uploadImage()">Submit</button>
 </div>
 
 <h2>Search Vehicle Violations</h2>
 <div class="message" id="searchMsg"></div>
 <div class="form-group">
-    <input type="text" id="searchPlate" placeholder="Enter vehicle number">
-    <button onclick="searchViolations()">Search</button>
+<input type="text" id="searchPlate" placeholder="Enter vehicle number">
+<button onclick="searchViolations()">Search</button>
 </div>
 <div id="searchResults"></div>
 
 <h2>Pay Fine</h2>
 <div class="message" id="payMsg"></div>
 <div class="form-group">
-    <input type="text" id="payPlate" placeholder="Vehicle number">
-    <input type="number" id="payAmount" placeholder="Amount">
-    <button onclick="payFine()">Pay</button>
+<input type="text" id="payPlate" placeholder="Vehicle number">
+<input type="number" id="payAmount" placeholder="Amount">
+<button onclick="payFine()">Pay</button>
 </div>
 
-<div id="payResults"></div>
 </div>
 
 <script>
 async function uploadImage() {
-    const fileInput = document.getElementById('carImage');
-    const msgDiv = document.getElementById('uploadMsg');
-    if (!fileInput.files[0]) return;
+    const input = document.getElementById('carImage');
+    const msgDiv = document.getElementById('imgMsg');
+    if (!input.files[0]) return;
     const formData = new FormData();
-    formData.append("file", fileInput.files[0]);
+    formData.append("file", input.files[0]);
     try {
-        const res = await fetch("http://127.0.0.1:8000/api/new_violation_image", {
-            method: "POST",
-            body: formData
-        });
+        const res = await fetch('http://127.0.0.1:8000/api/new_violation_image', { method:'POST', body: formData });
         const data = await res.json();
-        if (data.status === "success") {
-            msgDiv.textContent = data.message + ` | Fine: ${data.fine} Rs`;
-            msgDiv.innerHTML += `<br><img src="${data.image}" alt="evidence">`;
-        } else if (data.status === "wait") {
-            msgDiv.textContent = data.message;
-        } else {
-            msgDiv.textContent = data.message;
-        }
-    } catch(err) { msgDiv.textContent = "Error uploading image."; console.error(err); }
+        if(data.status==='error'){ msgDiv.textContent = data.message; return; }
+        msgDiv.textContent = `Plate: ${data.plate} | Fine: ${data.fine}`;
+        if(data.image){ const img = document.createElement("img"); img.src = data.image; msgDiv.appendChild(img); }
+    } catch(e){ console.error(e); msgDiv.textContent = 'Error uploading image'; }
 }
 
 async function searchViolations() {
     const plate = document.getElementById('searchPlate').value.trim();
     const msgDiv = document.getElementById('searchMsg');
     const resultsDiv = document.getElementById('searchResults');
-    if (!plate) return;
+    if(!plate) return;
     try {
         const res = await fetch(`http://127.0.0.1:8000/api/get_vehicle/${plate}`);
         const data = await res.json();
-        if (data.status === "no_record" || data.status === "no_dues") {
-            msgDiv.textContent = data.message;
-            resultsDiv.innerHTML = "";
-            return;
-        }
-        msgDiv.textContent = "";
+        if(data.status==='no_record' || data.status==='no_dues'){ resultsDiv.innerHTML=''; msgDiv.textContent=data.message; return; }
+        msgDiv.textContent='';
+        let tableHTML=`<table><tr><th>Type</th><th>Amount</th><th>Timestamp</th><th>Evidence</th></tr>`;
         let total = 0;
-        let html = `<table><tr><th>Type</th><th>Amount</th><th>Timestamp</th><th>Evidence</th></tr>`;
-        data.record.breakdown.forEach(item => {
-            total += item.type==="FINE"?item.amount:0;
-            html += `<tr>
-                        <td>${item.type}</td>
-                        <td>${item.amount}</td>
-                        <td>${item.timestamp}</td>
-                        <td>${item.image?`<img src="${item.image}">`:''}</td>
-                     </tr>`;
+        data.record.breakdown.forEach(v=>{
+            tableHTML += `<tr><td>${v.type}</td><td>${v.amount}</td><td>${v.timestamp}</td><td>${v.image? `<img src="${v.image}">` : ''}</td></tr>`;
+            if(v.type==='FINE') total+=v.amount;
         });
-        html += `<tr><th>Total Fine</th><th colspan="3">${data.record.fine} Rs</th></tr></table>`;
-        resultsDiv.innerHTML = html;
-    } catch(err) { msgDiv.textContent="Error fetching violations."; console.error(err); }
+        tableHTML += `<tr><th>Total</th><th>${total}</th><th colspan="2"></th></tr></table>`;
+        resultsDiv.innerHTML = tableHTML;
+    } catch(e){ console.error(e); msgDiv.textContent='Error fetching'; }
 }
 
 async function payFine() {
     const plate = document.getElementById('payPlate').value.trim();
     const amount = parseInt(document.getElementById('payAmount').value);
     const msgDiv = document.getElementById('payMsg');
-    if (!plate || !amount) return;
-    try {
-        const res = await fetch("http://127.0.0.1:8000/api/pay_fine", {
-            method:"POST",
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({number:plate,amount:amount})
+    if(!plate || !amount) return;
+    try{
+        const res = await fetch('http://127.0.0.1:8000/api/pay_fine', {
+            method:'POST', headers:{'Content-Type':'application/json'}, 
+            body: JSON.stringify({number: plate, amount: amount})
         });
         const data = await res.json();
         msgDiv.textContent = data.message;
-    } catch(err) { msgDiv.textContent="Error processing payment."; console.error(err); }
+    }catch(e){ console.error(e); msgDiv.textContent='Error paying fine';}
 }
 </script>
 </body>
