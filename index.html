@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parking Violations Dashboard</title>
+</head>
+<body>
+<h2>Record a New Violation</h2>
+<input type="text" id="plate" placeholder="Enter vehicle number">
+<button onclick="recordViolation()">Submit</button>
+
+<h2>Records</h2>
+<ul id="records"></ul>
+
+<script>
+async function recordViolation() {
+    const plate = document.getElementById("plate").value;
+    const response = await fetch("http://127.0.0.1:8000/api/new_violation", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({number: plate})
+    });
+    const data = await response.json();
+    alert(`${data.message}. Fine: Rs ${data.fine}`);
+    getRecords();
+}
+
+async function getRecords() {
+    const resp = await fetch("http://127.0.0.1:8000/api/get_records");
+    const records = await resp.json();
+    const ul = document.getElementById("records");
+    ul.innerHTML = "";
+    records.forEach(r => {
+        const li = document.createElement("li");
+        li.textContent = `${r.timestamp} - ${r.plate} - ${r.violation} - Fine: Rs ${r.fine}`;
+        ul.appendChild(li);
+    });
+}
+
+// Auto-refresh every 5 seconds
+setInterval(getRecords, 5000);
+getRecords();
+</script>
+</body>
+</html>
