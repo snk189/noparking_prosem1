@@ -14,6 +14,8 @@ img.thumb{width:90px;border:2px solid #0077ff;margin:4px;cursor:pointer;border-r
 .statusGreen{color:green;font-weight:bold;font-size:18px}
 .statusRed{color:red;font-weight:bold;font-size:18px}
 input[type=date], input[type=time]{padding:6px;margin:4px;border-radius:5px;border:1px solid #ccc;}
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px;text-align:center;border:1px solid #ccc;}
 </style>
 </head>
 <body>
@@ -25,8 +27,7 @@ input[type=date], input[type=time]{padding:6px;margin:4px;border-radius:5px;bord
 <div id="msg"></div><hr>
 
 <h3>Search Vehicle</h3>
-<input id="num" placeholder="KA01AB1234">
-<br>
+<input id="num" placeholder="KA01AB1234"><br>
 Start Date: <input type="date" id="startDate"> Start Time: <input type="time" id="startTime">
 <button onclick="fetchData()">Search</button>
 <div id="res"></div><hr>
@@ -35,7 +36,10 @@ Start Date: <input type="date" id="startDate"> Start Time: <input type="time" id
 <input id="pnum" placeholder="KA01AB1234">
 <input type="number" id="amt" placeholder="Amount">
 <button onclick="pay()">Pay</button>
-<div id="paymsg"></div>
+<div id="paymsg"></div><hr>
+
+<h3>Recent 5 Violations</h3>
+<div id="recent"></div>
 
 </div>
 
@@ -52,6 +56,7 @@ async function add(){
  if(d.status==='wait'){ msg.innerText=d.message; return; }
  if(d.status==='error'){ msg.innerText=d.message; return; }
  msg.innerText=`Plate: ${d.plate} | Fine: ${d.fine}`;
+ fetchRecent();
 }
 
 function show(src){ modal.style.display="flex"; big.src=src; }
@@ -77,7 +82,7 @@ async function fetchData(){
 
  let h=`<p class="${color}">Remaining Due: ₹${remain}</p>
         <p>Total Fine: ₹${totalFine} | Total Paid: ₹${totalPaid}</p>
-        <table border=1 cellpadding=6>
+        <table>
         <tr><th>Type</th><th>Amount</th><th>Time</th><th>Img</th></tr>`;
 
  rec.break.forEach(v=>{
@@ -100,6 +105,25 @@ async function pay(){
  let d=await r.json();
  paymsg.innerText=d.message;
 }
+
+async function fetchRecent(){
+ let r=await fetch(api+"/api/recent_violations");
+ let d=await r.json();
+ let h="<table><tr><th>Plate</th><th>Time</th><th>Img</th></tr>";
+ d.recent.forEach(v=>{
+   h+=`<tr>
+   <td>${v.plate}</td>
+   <td>${v.time}</td>
+   <td>${v.img?`<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">`:"-"}</td>
+   </tr>`;
+ });
+ h+="</table>";
+ recent.innerHTML=h;
+}
+
+// Auto-refresh recent violations every 5 seconds
+setInterval(fetchRecent,5000);
+fetchRecent();
 </script>
 </body>
 </html>
