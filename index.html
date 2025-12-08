@@ -6,7 +6,7 @@
 <style>
 body{font-family:Segoe UI;background:#f0f2f5;margin:0}
 header{background:#0077ff;color:#fff;text-align:center;padding:18px;font-size:24px}
-.container{max-width:900px;margin:25px auto;background:#fff;padding:20px;border-radius:10px}
+.container{max-width:950px;margin:25px auto;background:#fff;padding:20px;border-radius:10px}
 button{background:#0077ff;color:#fff;border:0;padding:10px;border-radius:6px;cursor:pointer;margin-top:6px}
 img.thumb{width:90px;border:2px solid #0077ff;margin:4px;cursor:pointer;border-radius:6px}
 #modal{position:fixed;top:0;left:0;width:100%;height:100%;display:none;background:rgba(0,0,0,.7);justify-content:center;align-items:center;z-index:9999}
@@ -38,7 +38,7 @@ Start Date: <input type="date" id="startDate"> Start Time: <input type="time" id
 <button onclick="pay()">Pay</button>
 <div id="paymsg"></div><hr>
 
-<h3>Recent 5 Violations</h3>
+<h3>Recent 5 Vehicles</h3>
 <div id="recent"></div>
 
 </div>
@@ -109,15 +109,16 @@ async function pay(){
 async function fetchRecent(){
  let r=await fetch(api+"/api/recent_violations");
  let d=await r.json();
- let h="<table><tr><th>Plate</th><th>Time</th><th>Img</th></tr>";
+ let h="";
  d.recent.forEach(v=>{
-   h+=`<tr>
-   <td>${v.plate}</td>
-   <td>${v.time}</td>
-   <td>${v.img?`<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">`:"-"}</td>
-   </tr>`;
+   let color = v.remaining===0?"statusGreen":"statusRed";
+   h+=`<div style="border:1px solid #ccc;padding:6px;margin:4px;border-radius:6px">
+   <b>Plate:</b> ${v.plate} | <b>Time:</b> ${v.time} | 
+   <b>Total Fine:</b> ${v.total_fine} | <b>Paid:</b> ${v.total_paid} | 
+   <b>Remaining:</b> <span class="${color}">₹${v.remaining}</span><br>
+   ${v.img?`<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">`:"-"}
+   </div>`;
  });
- h+="</table>";
  recent.innerHTML=h;
 }
 
