@@ -107,8 +107,21 @@ def recent():
     data = load()
     all_violations = []
     for plate, rec in data.items():
-        for b in rec["break"]:
-            if b["type"]=="FINE":
-                all_violations.append({"plate": plate, "time": b["time"], "img": b["img"]})
+        total_fine = sum(b["amount"] for b in rec["break"] if b["type"]=="FINE")
+        total_paid = sum(-b["amount"] for b in rec["break"] if b["type"]=="PAY")
+        remaining = rec["fine"]
+        # Get latest violation
+        latest = max([b for b in rec["break"] if b["type"]=="FINE"], 
+                     key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), default=None)
+        if latest:
+            all_violations.append({
+                "plate": plate,
+                "time": latest["time"],
+                "img": latest["img"],
+                "total_fine": total_fine,
+                "total_paid": total_paid,
+                "remaining": remaining
+            })
+
     all_violations = sorted(all_violations, key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), reverse=True)
     return {"recent": all_violations[:5]}
