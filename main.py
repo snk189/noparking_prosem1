@@ -8,7 +8,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*",], allow_headers=["*"]
+    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
 
 DATA_FILE = "data.json"
@@ -47,28 +47,27 @@ def detect(img):
 async def new(file: UploadFile=File(...)):
     img = await file.read()
     plate,imgb64 = detect(img)
-    if not plate: return {"status":"error","msg":"Plate not detected"}
+    if not plate: return {"status":"error","message":"Plate not detected"}
 
     data = load()
     now = datetime.now()
     if plate not in data:
         data[plate] = {
-            "fine":FINE_AMOUNT,"last":now.isoformat(),"break":[
-                {"type":"FINE","amount":FINE_AMOUNT,"time":time(),"img":imgb64}
-            ]
+            "fine":FINE_AMOUNT,
+            "last":now.isoformat(),
+            "break":[{"type":"FINE","amount":FINE_AMOUNT,"time":time(),"img":imgb64}]
         }
         save(data)
-        return {"status":"added","plate":plate}
+        return {"status":"added","plate":plate,"fine":FINE_AMOUNT}
 
-    diff = (now - datetime.fromisoformat(data[plate]["last"])).total_seconds()
-    if diff < BUFFER_SECONDS:
-        return {"status":"wait","sec":BUFFER_SECONDS-int(diff)}
+    elapsed = (now - datetime.fromisoformat(data[plate]["last"])).total_seconds()
+    if elapsed < BUFFER_SECONDS:
+        wait = BUFFER_SECONDS - int(elapsed)
+        return {"status":"wait","message":f"Please wait {wait} seconds before adding again.", "wait_time": wait}
 
     data[plate]["fine"] += FINE_AMOUNT
     data[plate]["last"] = now.isoformat()
-    data[plate]["break"].append(
-        {"type":"FINE","amount":FINE_AMOUNT,"time":time(),"img":imgb64}
-    )
+    data[plate]["break"].append({"type":"FINE","amount":FINE_AMOUNT,"time":time(),"img":imgb64})
     save(data)
     return {"status":"updated","plate":plate,"fine":data[plate]["fine"]}
 
@@ -76,19 +75,20 @@ async def new(file: UploadFile=File(...)):
 def pay(p: Payment):
     data = load()
     n = p.number.upper()
-    if n not in data: return {"status":"no_record"}
+    if n not in data: return {"status":"no_record","message":"No violation exists for this vehicle."}
     if p.amount > data[n]["fine"]:
-        return {"status":"excess","remain":data[n]["fine"]}
+        return {"status":"excess","message":f"Excess payment tried ({p.amount} Rs). Remaining fine: {data[n]['fine']} Rs"}
 
     data[n]["fine"] -= p.amount
-    data[n]["break"].append(
-        {"type":"PAY","amount":-p.amount,"time":time(),"img":None}
-    )
+    data[n]["break"].append({"type":"PAY","amount":-p.amount,"time":time(),"img":None})
     save(data)
-    return {"status":"paid","remain":data[n]["fine"]}
+    return {"status":"paid","message":f"Payment successful. Remaining fine: {data[n]['fine']} Rs", "remaining": data[n]["fine"]}
 
 @app.get("/api/get_vehicle/{p}")
 def get_v(p:str):
     data = load()
-    if p.upper() not in data: return {"status":"no_record"}
-    return {"status":"found","record":data[p.upper()]}
+    if p.upper() not in data: return {"status":"no_record","message":"No record found"}
+    record = data[p.upper()]
+    # Sort newest first
+    record["break"] = sorted(record["break"], key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), reverse=True)
+    return {"status":"found","record":record}
