@@ -1,11 +1,10 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
 import json, os, base64, easyocr, cv2, numpy as np, re
 
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
@@ -85,10 +84,23 @@ def pay(p: Payment):
     return {"status":"paid","message":f"Payment successful. Remaining fine: {data[n]['fine']} Rs", "remaining": data[n]["fine"]}
 
 @app.get("/api/get_vehicle/{p}")
-def get_v(p:str):
+def get_v(p:str, start: str = Query(None), start_time: str = Query(None)):
     data = load()
-    if p.upper() not in data: return {"status":"no_record","message":"No record found"}
-    record = data[p.upper()]
+    key = p.upper()
+    if key not in data: return {"status":"no_record","message":"No record found"}
+    record = data[key]
+
     # Sort newest first
     record["break"] = sorted(record["break"], key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), reverse=True)
+
+    # Filter by start date/time if provided
+    if start:
+        # default start_time if not provided
+        if not start_time:
+            start_time = "00:00:00"
+        # Add seconds if only HH:MM
+        if len(start_time)==5: start_time+=":00"
+        start_dt = datetime.strptime(start + " " + start_time, "%Y-%m-%d %H:%M:%S")
+        record["break"] = [b for b in record["break"] if datetime.strptime(b["time"], "%d %B %Y - %I:%M:%S %p") >= start_dt]
+
     return {"status":"found","record":record}
