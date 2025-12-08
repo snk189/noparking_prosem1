@@ -95,12 +95,20 @@ def get_v(p:str, start: str = Query(None), start_time: str = Query(None)):
 
     # Filter by start date/time if provided
     if start:
-        # default start_time if not provided
-        if not start_time:
-            start_time = "00:00:00"
-        # Add seconds if only HH:MM
+        if not start_time: start_time = "00:00:00"
         if len(start_time)==5: start_time+=":00"
         start_dt = datetime.strptime(start + " " + start_time, "%Y-%m-%d %H:%M:%S")
         record["break"] = [b for b in record["break"] if datetime.strptime(b["time"], "%d %B %Y - %I:%M:%S %p") >= start_dt]
 
     return {"status":"found","record":record}
+
+@app.get("/api/recent_violations")
+def recent():
+    data = load()
+    all_violations = []
+    for plate, rec in data.items():
+        for b in rec["break"]:
+            if b["type"]=="FINE":
+                all_violations.append({"plate": plate, "time": b["time"], "img": b["img"]})
+    all_violations = sorted(all_violations, key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), reverse=True)
+    return {"recent": all_violations[:5]}
