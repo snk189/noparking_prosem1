@@ -1,103 +1,80 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>Parking Violations Dashboard</title>
+<title>Parking System</title>
 <style>
-body { font-family: 'Segoe UI', sans-serif; background:#f0f2f5; margin:0; padding:0; }
-header { background:#1E90FF; color:white; text-align:center; padding:20px; font-size:26px; font-weight:bold; }
-.container { max-width:800px; margin:30px auto; background:white; padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
-h2 { color:#1E90FF; text-align:center; }
-.form-group { display:flex; justify-content:center; margin-bottom:20px; }
-input[type="text"], input[type="number"] { padding:10px; font-size:16px; border-radius:6px; border:1px solid #ccc; width:250px; }
-button { padding:10px 15px; margin-left:10px; background:#1E90FF; color:white; border:none; border-radius:6px; cursor:pointer; font-size:16px; }
-button:hover { background:#005bb5; }
-.message { text-align:center; font-weight:bold; margin-bottom:15px; color:#ff4500; }
-table { width:100%; border-collapse:collapse; margin-top:15px; }
-th, td { padding:10px; border-bottom:1px solid #ddd; text-align:center; }
-th { background:#1E90FF; color:white; }
-img { max-width:200px; }
+body{font-family:Segoe UI;background:#f0f2f5;margin:0;padding:0}
+header{background:#1E90FF;color:#fff;text-align:center;padding:18px;font-size:24px}
+.container{max-width:800px;margin:25px auto;background:#fff;padding:20px;border-radius:10px}
+button{background:#1E90FF;color:#fff;border:0;padding:10px;border-radius:6px;cursor:pointer}
+#galleryModal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);display:none;justify-content:center;align-items:center}
+#galleryImg{max-width:90%;max-height:90%;border:4px solid #fff}
+img.thumb{width:80px;height:auto;cursor:pointer;margin:4px;border:2px solid #1E90FF;border-radius:6px}
 </style>
 </head>
 <body>
 <header>Parking Violations Dashboard</header>
 <div class="container">
 
-<h2>Upload Car Image</h2>
-<div class="message" id="imgMsg"></div>
-<div class="form-group">
-<input type="file" id="carImage">
-<button onclick="uploadImage()">Submit</button>
-</div>
+<h3>Upload Car Image</h3>
+<input type="file" id="carImage"><button onclick="uploadImage()">Submit</button>
+<div id="imgMsg"></div><hr>
 
-<h2>Search Vehicle Violations</h2>
-<div class="message" id="searchMsg"></div>
-<div class="form-group">
-<input type="text" id="searchPlate" placeholder="Enter vehicle number">
-<button onclick="searchViolations()">Search</button>
-</div>
-<div id="searchResults"></div>
+<h3>Search Vehicle</h3>
+<input id="searchPlate" placeholder="Vehicle number"><button onclick="searchVeh()">Search</button>
+<div id="res"></div><hr>
 
-<h2>Pay Fine</h2>
-<div class="message" id="payMsg"></div>
-<div class="form-group">
-<input type="text" id="payPlate" placeholder="Vehicle number">
-<input type="number" id="payAmount" placeholder="Amount">
+<h3>Pay Fine</h3>
+<input id="payPlate" placeholder="Vehicle number">
+<input type="number" id="payAmt" placeholder="Amount">
 <button onclick="payFine()">Pay</button>
+<div id="payMsg"></div>
 </div>
 
+<div id="galleryModal" onclick="this.style.display='none'">
+<img id="galleryImg">
 </div>
 
 <script>
-async function uploadImage() {
-    const input = document.getElementById('carImage');
-    const msgDiv = document.getElementById('imgMsg');
-    if (!input.files[0]) return;
-    const formData = new FormData();
-    formData.append("file", input.files[0]);
-    try {
-        const res = await fetch('http://127.0.0.1:8000/api/new_violation_image', { method:'POST', body: formData });
-        const data = await res.json();
-        if(data.status==='error'){ msgDiv.textContent = data.message; return; }
-        msgDiv.textContent = `Plate: ${data.plate} | Fine: ${data.fine}`;
-        if(data.image){ const img = document.createElement("img"); img.src = data.image; msgDiv.appendChild(img); }
-    } catch(e){ console.error(e); msgDiv.textContent = 'Error uploading image'; }
+const api = "http://127.0.0.1:8000";
+
+async function uploadImage(){
+    let f=document.getElementById("carImage").files[0];
+    if(!f) return;
+    let fd=new FormData(); fd.append("file",f);
+    let r=await fetch(api+"/api/new_violation_image",{method:"POST",body:fd});
+    let d=await r.json();
+    imgMsg.innerText=JSON.stringify(d);
 }
 
-async function searchViolations() {
-    const plate = document.getElementById('searchPlate').value.trim();
-    const msgDiv = document.getElementById('searchMsg');
-    const resultsDiv = document.getElementById('searchResults');
-    if(!plate) return;
-    try {
-        const res = await fetch(`http://127.0.0.1:8000/api/get_vehicle/${plate}`);
-        const data = await res.json();
-        if(data.status==='no_record' || data.status==='no_dues'){ resultsDiv.innerHTML=''; msgDiv.textContent=data.message; return; }
-        msgDiv.textContent='';
-        let tableHTML=`<table><tr><th>Type</th><th>Amount</th><th>Timestamp</th><th>Evidence</th></tr>`;
-        let total = 0;
-        data.record.breakdown.forEach(v=>{
-            tableHTML += `<tr><td>${v.type}</td><td>${v.amount}</td><td>${v.timestamp}</td><td>${v.image? `<img src="${v.image}">` : ''}</td></tr>`;
-            if(v.type==='FINE') total+=v.amount;
-        });
-        tableHTML += `<tr><th>Total</th><th>${total}</th><th colspan="2"></th></tr></table>`;
-        resultsDiv.innerHTML = tableHTML;
-    } catch(e){ console.error(e); msgDiv.textContent='Error fetching'; }
+async function searchVeh(){
+    let p=document.getElementById("searchPlate").value.trim();
+    let r=await fetch(api+"/api/get_vehicle/"+p);
+    let d=await r.json();
+    if(d.status!=="found"){res.innerText="No record";return;}
+
+    let h=`<h4>Remaining Due: ₹${d.record.fine}</h4><table border=1><tr><th>Type</th><th>Amount</th><th>Time</th><th>Evidence</th></tr>`;
+    d.record.breakdown.forEach(v=>{
+        h+=`<tr><td>${v.type}</td><td>${v.amount}</td><td>${v.timestamp}</td>
+        <td>${v.image?`<img class='thumb' onclick='openPopup(this.src)' src="data:image/jpeg;base64,${v.image}">`:''}</td></tr>`;
+    });
+    h+="</table>";
+    res.innerHTML=h;
 }
 
-async function payFine() {
-    const plate = document.getElementById('payPlate').value.trim();
-    const amount = parseInt(document.getElementById('payAmount').value);
-    const msgDiv = document.getElementById('payMsg');
-    if(!plate || !amount) return;
-    try{
-        const res = await fetch('http://127.0.0.1:8000/api/pay_fine', {
-            method:'POST', headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({number: plate, amount: amount})
-        });
-        const data = await res.json();
-        msgDiv.textContent = data.message;
-    }catch(e){ console.error(e); msgDiv.textContent='Error paying fine';}
+function openPopup(src){
+    galleryModal.style.display="flex";
+    galleryImg.src=src;
+}
+
+async function payFine(){
+    let n=payPlate.value.trim(),a=Number(payAmt.value);
+    let r=await fetch(api+"/api/pay_fine",{method:"POST",
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({number:n,amount:a})});
+    let d=await r.json();
+    payMsg.innerText=JSON.stringify(d);
 }
 </script>
 </body>
