@@ -6,13 +6,14 @@
 <style>
 body{font-family:Segoe UI;background:#f0f2f5;margin:0}
 header{background:#0077ff;color:#fff;text-align:center;padding:18px;font-size:24px}
-.container{max-width:850px;margin:25px auto;background:#fff;padding:20px;border-radius:10px}
+.container{max-width:900px;margin:25px auto;background:#fff;padding:20px;border-radius:10px}
 button{background:#0077ff;color:#fff;border:0;padding:10px;border-radius:6px;cursor:pointer;margin-top:6px}
-img.thumb{width:90px;border:3px solid #0077ff;margin:4px;cursor:pointer;border-radius:8px}
-#modal{position:fixed;top:0;left:0;width:100%;height:100%;display:none;background:rgba(0,0,0,.7);justify-content:center;align-items:center}
-#modal img{max-width:90%;max-height:90%;border:5px solid #fff}
-.statusGreen{color:green;font-weight:bold;font-size:20px}
-.statusRed{color:red;font-weight:bold;font-size:20px}
+img.thumb{width:90px;border:2px solid #0077ff;margin:4px;cursor:pointer;border-radius:6px}
+#modal{position:fixed;top:0;left:0;width:100%;height:100%;display:none;background:rgba(0,0,0,.7);justify-content:center;align-items:center;z-index:9999}
+#modal img{max-width:90%;max-height:90%;border:5px solid #fff;border-radius:8px}
+.statusGreen{color:green;font-weight:bold;font-size:18px}
+.statusRed{color:red;font-weight:bold;font-size:18px}
+input[type=date], input[type=time]{padding:6px;margin:4px;border-radius:5px;border:1px solid #ccc;}
 </style>
 </head>
 <body>
@@ -25,6 +26,8 @@ img.thumb{width:90px;border:3px solid #0077ff;margin:4px;cursor:pointer;border-r
 
 <h3>Search Vehicle</h3>
 <input id="num" placeholder="KA01AB1234">
+<br>
+Start Date: <input type="date" id="startDate"> Start Time: <input type="time" id="startTime">
 <button onclick="fetchData()">Search</button>
 <div id="res"></div><hr>
 
@@ -47,14 +50,19 @@ async function add(){
  let r=await fetch(api+"/api/new_violation_image",{method:"POST",body:fd});
  let d=await r.json();
  if(d.status==='wait'){ msg.innerText=d.message; return; }
- msg.innerText=JSON.stringify(d);
+ if(d.status==='error'){ msg.innerText=d.message; return; }
+ msg.innerText=`Plate: ${d.plate} | Fine: ${d.fine}`;
 }
 
 function show(src){ modal.style.display="flex"; big.src=src; }
 
 async function fetchData(){
- let n=num.value.trim(); if(!n) return;
- let r=await fetch(api+"/api/get_vehicle/"+n);
+ let n=num.value.trim(); if(!n){ res.innerText="Enter vehicle number"; return; }
+ let sdate=document.getElementById("startDate").value;
+ let stime=document.getElementById("startTime").value;
+ let url=api+"/api/get_vehicle/"+n;
+ if(sdate) url+="?start="+sdate+(stime?"&start_time="+stime:"");
+ let r=await fetch(url);
  let d=await r.json();
  if(d.status!=="found"){res.innerText=d.message; return;}
 
@@ -85,6 +93,7 @@ async function fetchData(){
 
 async function pay(){
  let n=pnum.value.trim(),a=parseInt(amt.value);
+ if(!n || !a){ paymsg.innerText="Enter vehicle number & amount"; return; }
  let r=await fetch(api+"/api/pay_fine",{method:"POST",
  headers:{'Content-Type':'application/json'},
  body:JSON.stringify({number:n,amount:a})});
