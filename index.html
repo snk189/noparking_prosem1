@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Traffic System</title>
+<title>Traffic Violations</title>
 <style>
 body{font-family:Segoe UI;background:#f0f2f5;margin:0}
 header{background:#0077ff;color:#fff;text-align:center;padding:18px;font-size:24px}
@@ -46,6 +46,7 @@ async function add(){
  let fd=new FormData(); fd.append("file",f);
  let r=await fetch(api+"/api/new_violation_image",{method:"POST",body:fd});
  let d=await r.json();
+ if(d.status==='wait'){ msg.innerText=d.message; return; }
  msg.innerText=JSON.stringify(d);
 }
 
@@ -55,24 +56,21 @@ async function fetchData(){
  let n=num.value.trim(); if(!n) return;
  let r=await fetch(api+"/api/get_vehicle/"+n);
  let d=await r.json();
- if(d.status!=="found"){res.innerText="No record";return;}
+ if(d.status!=="found"){res.innerText=d.message; return;}
 
  let rec=d.record;
  let totalFine=0,totalPaid=0;
-
  rec.break.forEach(v=>{
    if(v.type==="FINE") totalFine+=v.amount;
    if(v.type==="PAY") totalPaid+=(-v.amount);
  });
-
  let remain=rec.fine;
  let color = remain===0 ? "statusGreen" : "statusRed";
 
- let h=`
- <p class="${color}">Remaining Due: ₹${remain}</p>
- <p>Total Fine: ₹${totalFine} | Total Paid: ₹${totalPaid}</p>
- <table border=1 cellpadding=6>
- <tr><th>Type</th><th>Amount</th><th>Time</th><th>Img</th></tr>`;
+ let h=`<p class="${color}">Remaining Due: ₹${remain}</p>
+        <p>Total Fine: ₹${totalFine} | Total Paid: ₹${totalPaid}</p>
+        <table border=1 cellpadding=6>
+        <tr><th>Type</th><th>Amount</th><th>Time</th><th>Img</th></tr>`;
 
  rec.break.forEach(v=>{
  h+=`<tr>
@@ -82,9 +80,7 @@ async function fetchData(){
  <td>${v.img?`<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">`:"-"}</td>
  </tr>`;
  });
-
- h+="</table>";
- res.innerHTML=h;
+ h+="</table>"; res.innerHTML=h;
 }
 
 async function pay(){
@@ -93,7 +89,7 @@ async function pay(){
  headers:{'Content-Type':'application/json'},
  body:JSON.stringify({number:n,amount:a})});
  let d=await r.json();
- paymsg.innerText=JSON.stringify(d);
+ paymsg.innerText=d.message;
 }
 </script>
 </body>
