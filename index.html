@@ -39,7 +39,10 @@ Start Date: <input type="date" id="startDate"> Start Time: <input type="time" id
 <div id="paymsg"></div><hr>
 
 <h3>Recent 5 Vehicles</h3>
-<div id="recent"></div>
+<div id="recent"></div><hr>
+
+<h3>No Plate Detected</h3>
+<div id="noplate"></div>
 
 </div>
 
@@ -55,6 +58,7 @@ async function add(){
  let d=await r.json();
  if(d.status==='wait'){ msg.innerText=d.message; return; }
  if(d.status==='error'){ msg.innerText=d.message; return; }
+ if(d.status==='noplate'){ msg.innerText=d.message; fetchNoPlate(); return; }
  msg.innerText=`Plate: ${d.plate} | Fine: ${d.fine}`;
  fetchRecent();
 }
@@ -122,9 +126,23 @@ async function fetchRecent(){
  recent.innerHTML=h;
 }
 
-// Auto-refresh recent violations every 5 seconds
-setInterval(fetchRecent,5000);
+async function fetchNoPlate(){
+ let r=await fetch(api+"/api/no_plate");
+ let d=await r.json();
+ let h="";
+ d.noplate.forEach(v=>{
+   h+=`<div style="border:1px solid #ccc;padding:6px;margin:4px;border-radius:6px">
+   <b>Time:</b> ${v.time}<br>
+   <img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">
+   </div>`;
+ });
+ noplate.innerHTML=h;
+}
+
+// Auto-refresh recent violations and no-plate images every 5 seconds
+setInterval(()=>{ fetchRecent(); fetchNoPlate(); },5000);
 fetchRecent();
+fetchNoPlate();
 </script>
 </body>
 </html>
