@@ -11,6 +11,7 @@ app.add_middleware(
 )
 
 DATA_FILE = "data.json"
+NO_PLATE_FILE = "no_plate.json"
 FINE_AMOUNT = 100
 BUFFER_SECONDS = 5
 ocr = easyocr.Reader(['en'])
@@ -18,6 +19,8 @@ PLATE_REGEX = r"[A-Z]{2}[0-9]{1,2}[A-Z]{1,2}[0-9]{1,4}"
 
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w") as f: json.dump({}, f)
+if not os.path.exists(NO_PLATE_FILE):
+    with open(NO_PLATE_FILE, "w") as f: json.dump([], f)
 
 class Payment(BaseModel):
     number: str
@@ -25,6 +28,8 @@ class Payment(BaseModel):
 
 def load(): return json.load(open(DATA_FILE))
 def save(d): json.dump(d, open(DATA_FILE,"w"), indent=4)
+def load_noplate(): return json.load(open(NO_PLATE_FILE))
+def save_noplate(d): json.dump(d, open(NO_PLATE_FILE,"w"), indent=4)
 def time(): return datetime.now().strftime("%d %B %Y - %I:%M:%S %p")
 
 def detect(img):
@@ -40,16 +45,21 @@ def detect(img):
                         cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,0),2)
             _, buf = cv2.imencode(".jpg", im)
             return clean, base64.b64encode(buf).decode()
-    return None,None
+    _, buf = cv2.imencode(".jpg", im)
+    return None, base64.b64encode(buf).decode()
 
 @app.post("/api/new_violation_image")
 async def new(file: UploadFile=File(...)):
     img = await file.read()
     plate,imgb64 = detect(img)
-    if not plate: return {"status":"error","message":"Plate not detected"}
+    now = datetime.now()
+    if not plate:
+        no_plate_data = load_noplate()
+        no_plate_data.append({"time": time(), "img": imgb64})
+        save_noplate(no_plate_data)
+        return {"status":"noplate","message":"No plate detected", "img": imgb64, "time": time()}
 
     data = load()
-    now = datetime.now()
     if plate not in data:
         data[plate] = {
             "fine":FINE_AMOUNT,
@@ -90,10 +100,8 @@ def get_v(p:str, start: str = Query(None), start_time: str = Query(None)):
     if key not in data: return {"status":"no_record","message":"No record found"}
     record = data[key]
 
-    # Sort newest first
     record["break"] = sorted(record["break"], key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), reverse=True)
 
-    # Filter by start date/time if provided
     if start:
         if not start_time: start_time = "00:00:00"
         if len(start_time)==5: start_time+=":00"
@@ -110,7 +118,6 @@ def recent():
         total_fine = sum(b["amount"] for b in rec["break"] if b["type"]=="FINE")
         total_paid = sum(-b["amount"] for b in rec["break"] if b["type"]=="PAY")
         remaining = rec["fine"]
-        # Get latest violation
         latest = max([b for b in rec["break"] if b["type"]=="FINE"], 
                      key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), default=None)
         if latest:
@@ -125,3 +132,7 @@ def recent():
 
     all_violations = sorted(all_violations, key=lambda x: datetime.strptime(x["time"], "%d %B %Y - %I:%M:%S %p"), reverse=True)
     return {"recent": all_violations[:5]}
+
+@app.get("/api/no_plate")
+def get_noplate():
+    return {"noplate": load_noplate()}
