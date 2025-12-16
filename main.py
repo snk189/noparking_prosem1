@@ -6,6 +6,7 @@ import json, os, base64, easyocr, cv2, numpy as np, re
 import requests
 import asyncio
 import hashlib
+import math
 
 app = FastAPI()
 app.add_middleware(
@@ -18,11 +19,12 @@ NO_PLATE_FILE = "no_plate.json"
 FINE_AMOUNT = 100
 BUFFER_SECONDS = 5
 ocr = easyocr.Reader(['en'])
-PLATE_REGEX = r"[A-Z]{2}[0-9]{1,2}[A-Z]{1,2}[0-9]{1,4}"
+# STRICTER REGEX FOR MANUAL ENTRY
+PLATE_REGEX = r"^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$"
 
 # ESP32-CAM configuration
-ESP32_CAM_URL = "https://raw.githubusercontent.com/snk189/project/main/car1.jpg"
-FETCH_INTERVAL = 5  # seconds
+ESP32_CAM_URL = "https://www.thrustzone.com/wp-content/uploads/2018/03/Skoda-Kodiaq-India-Review-15.jpg"
+FETCH_INTERVAL = 5
 LAST_IMAGE_HASH = None
 IMAGE_HISTORY = set()
 
@@ -34,6 +36,10 @@ if not os.path.exists(NO_PLATE_FILE):
 class Payment(BaseModel):
     number: str
     amount: int
+
+class ManualViolation(BaseModel):
+    number: str
+    fine_amount: int = FINE_AMOUNT  # Default to 100
 
 def load(): return json.load(open(DATA_FILE))
 def save(d): json.dump(d, open(DATA_FILE,"w"), indent=4)
@@ -53,15 +59,38 @@ def is_duplicate_image(image_bytes):
     IMAGE_HISTORY.add(current_hash)
     return False
 
+def clean_plate_text(text):
+    """Clean plate text"""
+    if not text:
+        return ""
+    
+    clean = re.sub(r'[^A-Z0-9]', '', str(text).upper())
+    
+    corrections = [
+        ('0', 'O'), ('1', 'I'), ('2', 'Z'), ('5', 'S'),
+        ('8', 'B'), ('6', 'G'), ('9', 'G'), ('7', 'T'),
+        ('4', 'A'), ('3', 'B'), ('J', 'I'), ('U', 'V'),
+        ('Q', 'O'), ('D', 'O'), ('B', '8'), ('S', '5'),
+        ('G', '6'), ('T', '7'), ('A', '4'), ('L', '1'),
+        ('Z', '2'), ('I', '1'), ('O', '0')
+    ]
+    
+    for wrong, right in corrections:
+        clean = clean.replace(wrong, right)
+    
+    false_patterns = ['IND', 'INDIA', 'TIN', 'WWW', 'COM', 'IN', 'BHARAT', 'GOV', 'AUROHAR', 'HTTP']
+    for pattern in false_patterns:
+        clean = clean.replace(pattern, '')
+    
+    return clean
+
 def detect_plates_advanced(img):
-    """Main detection function that handles BOTH types of plates"""
+    """Main detection function"""
     arr = np.frombuffer(img, np.uint8)
     im = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     
-    # Store original for drawing
     original = im.copy()
     
-    # Try multiple approaches
     approaches = [
         ("Standard_Plate", lambda x: detect_standard_plate(x)),
         ("InnerText_Plate", lambda x: detect_innertext_plate(x)),
@@ -79,44 +108,33 @@ def detect_plates_advanced(img):
                     "plate": plate,
                     "approach": approach_name,
                     "image": processed_img,
-                    "confidence": 1.0  # Simplified
+                    "confidence": 1.0
                 })
                 print(f"✓ {approach_name} detected: {plate}")
         except Exception as e:
             print(f"✗ {approach_name} failed: {e}")
             continue
     
-    # Choose the best detection
     if all_detections:
-        # Prioritize plates matching regex exactly
         valid_detections = [d for d in all_detections if re.fullmatch(PLATE_REGEX, d["plate"])]
         if valid_detections:
-            best = valid_detections[0]  # Take first valid
+            best = valid_detections[0]
         else:
-            best = all_detections[0]  # Fallback to any detection
+            best = all_detections[0]
         
-        # Draw on original image
         cv2.putText(im, best["plate"], (50, 50), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
         _, buf = cv2.imencode(".jpg", im)
         return best["plate"], base64.b64encode(buf).decode()
     
-    # No plate found
     _, buf = cv2.imencode(".jpg", im)
     return None, base64.b64encode(buf).decode()
 
 def detect_standard_plate(img):
-    """Method 1: For normal plates without inner text"""
-    # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    # Basic threshold
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    # Denoise
     denoised = cv2.medianBlur(thresh, 3)
     
-    # OCR
     res = ocr.readtext(denoised)
     
     for box, txt, _ in res:
@@ -127,50 +145,34 @@ def detect_standard_plate(img):
     return None, thresh
 
 def detect_innertext_plate(img):
-    """Method 2: For plates with 'IND' text inside characters"""
-    # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    # CLAHE for contrast
     clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
-    
-    # Invert (make dark text white)
     inverted = cv2.bitwise_not(enhanced)
     
-    # Morphological operations to remove small artifacts
     kernel = np.ones((2, 2), np.uint8)
     morphed = cv2.morphologyEx(inverted, cv2.MORPH_CLOSE, kernel)
     
-    # Larger dilation to connect characters with inner text
     kernel2 = np.ones((3, 3), np.uint8)
     dilated = cv2.dilate(morphed, kernel2, iterations=1)
     
-    # Threshold to make binary
     _, binary = cv2.threshold(dilated, 150, 255, cv2.THRESH_BINARY)
     
-    # OCR with character whitelist
     custom_ocr = easyocr.Reader(['en'])
     res = custom_ocr.readtext(binary, allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
     
-    # Try to extract plate from results
     plate_candidates = []
     for box, txt, conf in res:
         clean = txt.replace(" ", "").upper()
-        # Remove obvious wrong characters
         clean = clean.replace("IND", "").replace("TIN", "").replace("INDIA", "")
         
-        if len(clean) >= 6:  # Minimum plate length
+        if len(clean) >= 6:
             plate_candidates.append((clean, conf))
     
-    # Try combinations of candidates
     for candidate, conf in sorted(plate_candidates, key=lambda x: x[1], reverse=True):
-        # Check if it matches plate format
         if re.fullmatch(PLATE_REGEX, candidate):
             return candidate, binary
         
-        # Try to extract plate from longer text
-        # Look for patterns like XX##XXX### or similar
         for i in range(len(candidate) - 5):
             substring = candidate[i:i+10]
             if re.fullmatch(PLATE_REGEX, substring):
@@ -179,14 +181,10 @@ def detect_innertext_plate(img):
     return None, binary
 
 def detect_enhanced_contrast(img):
-    """Method 3: High contrast approach"""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    # Extreme contrast
     clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(4, 4))
     enhanced = clahe.apply(gray)
     
-    # Adaptive threshold
     adaptive = cv2.adaptiveThreshold(enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                     cv2.THRESH_BINARY, 21, 5)
     
@@ -199,14 +197,8 @@ def detect_enhanced_contrast(img):
     return None, adaptive
 
 def detect_blue_channel(img):
-    """Method 4: Blue channel extraction (for blue plates)"""
-    # Split channels
     b, g, r = cv2.split(img)
-    
-    # Blue channel often has best contrast for blue plates
     blue_enhanced = cv2.equalizeHist(b)
-    
-    # Threshold blue channel
     _, blue_thresh = cv2.threshold(blue_enhanced, 50, 255, cv2.THRESH_BINARY)
     
     res = ocr.readtext(blue_thresh)
@@ -218,11 +210,9 @@ def detect_blue_channel(img):
     return None, blue_thresh
 
 def detect(img):
-    """Wrapper function - uses advanced detection"""
     return detect_plates_advanced(img)
 
 async def fetch_esp32_cam_image():
-    """Fetch image from ESP32-CAM server"""
     global LAST_IMAGE_HASH
     
     try:
@@ -280,15 +270,75 @@ async def fetch_esp32_cam_image():
         return None
 
 async def background_esp32_fetcher():
-    """Background task to continuously fetch images"""
     while True:
         await fetch_esp32_cam_image()
         await asyncio.sleep(FETCH_INTERVAL)
 
 @app.on_event("startup")
 async def startup_event():
-    """Start background task when FastAPI starts"""
     asyncio.create_task(background_esp32_fetcher())
+
+# NEW ENDPOINT: MANUALLY ADD VIOLATION BY PLATE NUMBER
+@app.post("/api/manual_violation")
+def manual_violation(violation: ManualViolation):
+    """Add violation manually by plate number only (no image)"""
+    plate = violation.number.upper()
+    
+    # Validate plate format
+    if not re.fullmatch(PLATE_REGEX, plate):
+        return {
+            "status": "invalid", 
+            "message": f"Invalid plate format. Must match: {PLATE_REGEX}",
+            "plate": plate
+        }
+    
+    now = datetime.now()
+    data = load()
+    
+    if plate not in data:
+        data[plate] = {
+            "fine": violation.fine_amount,
+            "last": now.isoformat(),
+            "break": [{"type": "FINE", "amount": violation.fine_amount, "time": time(), "img": None}]
+        }
+        save(data)
+        return {
+            "status": "added",
+            "plate": plate,
+            "fine": violation.fine_amount,
+            "message": f"Manual violation added for {plate} with fine {violation.fine_amount} Rs",
+            "time": time()
+        }
+    
+    # Check buffer time
+    elapsed = (now - datetime.fromisoformat(data[plate]["last"])).total_seconds()
+    if elapsed < BUFFER_SECONDS:
+        wait = BUFFER_SECONDS - int(elapsed)
+        return {
+            "status": "wait",
+            "message": f"Please wait {wait} seconds before adding violation for {plate} again.",
+            "wait_time": wait,
+            "plate": plate
+        }
+    
+    # Add fine to existing plate
+    data[plate]["fine"] += violation.fine_amount
+    data[plate]["last"] = now.isoformat()
+    data[plate]["break"].append({
+        "type": "FINE", 
+        "amount": violation.fine_amount, 
+        "time": time(), 
+        "img": None  # No image for manual entry
+    })
+    save(data)
+    
+    return {
+        "status": "updated",
+        "plate": plate,
+        "fine": data[plate]["fine"],
+        "message": f"Violation updated for {plate}. Total fine: {data[plate]['fine']} Rs",
+        "time": time()
+    }
 
 @app.post("/api/new_violation_image")
 async def new(file: UploadFile=File(...)):
@@ -395,17 +445,14 @@ def esp32_status():
 def root():
     return {"message": "Traffic Violation System API", "status": "running"}
 
-# Debug endpoint to test different detection methods
 @app.post("/api/test_detection")
 async def test_detection(file: UploadFile = File(...)):
-    """Test all detection methods on an uploaded image"""
     img = await file.read()
     arr = np.frombuffer(img, np.uint8)
     im = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     
     results = {}
     
-    # Test all methods
     methods = [
         ("Standard_Plate", detect_standard_plate),
         ("InnerText_Plate", detect_innertext_plate),
@@ -431,7 +478,6 @@ async def test_detection(file: UploadFile = File(...)):
                 "status": "error"
             }
     
-    # Try main detection
     main_plate, main_img = detect_plates_advanced(im.copy())
     
     return {
