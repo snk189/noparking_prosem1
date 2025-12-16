@@ -13,14 +13,25 @@ img.thumb{width:90px;border:2px solid #0077ff;margin:4px;cursor:pointer;border-r
 #modal img{max-width:90%;max-height:90%;border:5px solid #fff;border-radius:8px}
 .statusGreen{color:green;font-weight:bold;font-size:18px}
 .statusRed{color:red;font-weight:bold;font-size:18px}
-input[type=date], input[type=time]{padding:6px;margin:4px;border-radius:5px;border:1px solid #ccc;}
+input[type=date], input[type=time], input[type=text], input[type=number]{padding:6px;margin:4px;border-radius:5px;border:1px solid #ccc;width:200px}
 table{border-collapse:collapse;width:100%}
 th,td{padding:6px;text-align:center;border:1px solid #ccc;}
+.manual-section{background:#f8f9fa;padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid #dee2e6}
+.manual-section h4{margin-top:0;color:#0077ff}
 </style>
 </head>
 <body>
 <header>Parking & Traffic Violation Dashboard</header>
 <div class="container">
+
+<!-- NEW MANUAL VIOLATION SECTION -->
+<div class="manual-section">
+    <h4>📝 Add Violation Manually (No Image Needed)</h4>
+    <input id="manualPlate" placeholder="Enter Plate Number (e.g., KA01AB1234)">
+    <input type="number" id="manualFine" placeholder="Fine Amount" value="100">
+    <button onclick="addManualViolation()">Add Manual Violation</button>
+    <div id="manualMsg" style="margin-top:10px;"></div>
+</div>
 
 <h3>Upload Car Image</h3>
 <input type="file" id="img"><button onclick="add()">Submit</button>
@@ -50,6 +61,49 @@ Start Date: <input type="date" id="startDate"> Start Time: <input type="time" id
 
 <script>
 const api="http://127.0.0.1:8000";
+
+// NEW FUNCTION: Add manual violation
+async function addManualViolation() {
+    let plate = document.getElementById("manualPlate").value.trim().toUpperCase();
+    let fine = parseInt(document.getElementById("manualFine").value) || 100;
+    
+    if (!plate) {
+        document.getElementById("manualMsg").innerHTML = '<span style="color:red">Please enter a plate number</span>';
+        return;
+    }
+    
+    // Validate plate format (basic check)
+    if (!/^[A-Z]{2}\d{2}[A-Z]{1,2}\d{4}$/.test(plate)) {
+        document.getElementById("manualMsg").innerHTML = '<span style="color:red">Invalid plate format. Use: XX##XXX#### (e.g., KA01AB1234)</span>';
+        return;
+    }
+    
+    let response = await fetch(api + "/api/manual_violation", {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({number: plate, fine_amount: fine})
+    });
+    
+    let data = await response.json();
+    
+    if (data.status === 'added' || data.status === 'updated') {
+        document.getElementById("manualMsg").innerHTML = 
+            `<span style="color:green">✓ ${data.message}</span>`;
+        // Clear inputs
+        document.getElementById("manualPlate").value = '';
+        // Refresh recent violations
+        fetchRecent();
+    } else if (data.status === 'wait') {
+        document.getElementById("manualMsg").innerHTML = 
+            `<span style="color:orange">⏳ ${data.message}</span>`;
+    } else if (data.status === 'invalid') {
+        document.getElementById("manualMsg").innerHTML = 
+            `<span style="color:red">✗ ${data.message}</span>`;
+    } else {
+        document.getElementById("manualMsg").innerHTML = 
+            `<span style="color:red">Error: ${data.message || 'Unknown error'}</span>`;
+    }
+}
 
 async function add(){
  let f=img.files[0]; if(!f) return;
@@ -90,12 +144,16 @@ async function fetchData(){
         <tr><th>Type</th><th>Amount</th><th>Time</th><th>Img</th></tr>`;
 
  rec.break.forEach(v=>{
- h+=`<tr>
- <td>${v.type}</td>
- <td>${v.amount}</td>
- <td>${v.time}</td>
- <td>${v.img?`<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">`:"-"}</td>
- </tr>`;
+   let imgDisplay = v.img ? 
+     `<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">` : 
+     "<span style='color:#666'>No Image</span>";
+   
+   h+=`<tr>
+   <td>${v.type}</td>
+   <td>${v.amount}</td>
+   <td>${v.time}</td>
+   <td>${imgDisplay}</td>
+   </tr>`;
  });
  h+="</table>"; res.innerHTML=h;
 }
@@ -116,11 +174,15 @@ async function fetchRecent(){
  let h="";
  d.recent.forEach(v=>{
    let color = v.remaining===0?"statusGreen":"statusRed";
+   let imgDisplay = v.img ? 
+     `<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">` : 
+     "<span style='color:#666'>Manual Entry</span>";
+   
    h+=`<div style="border:1px solid #ccc;padding:6px;margin:4px;border-radius:6px">
    <b>Plate:</b> ${v.plate} | <b>Time:</b> ${v.time} | 
    <b>Total Fine:</b> ${v.total_fine} | <b>Paid:</b> ${v.total_paid} | 
    <b>Remaining:</b> <span class="${color}">₹${v.remaining}</span><br>
-   ${v.img?`<img class='thumb' src="data:image/jpeg;base64,${v.img}" onclick="show(this.src)">`:"-"}
+   ${imgDisplay}
    </div>`;
  });
  recent.innerHTML=h;
@@ -139,7 +201,7 @@ async function fetchNoPlate(){
  noplate.innerHTML=h;
 }
 
-// Auto-refresh recent violations and no-plate images every 5 seconds
+// Auto-refresh
 setInterval(()=>{ fetchRecent(); fetchNoPlate(); },5000);
 fetchRecent();
 fetchNoPlate();
